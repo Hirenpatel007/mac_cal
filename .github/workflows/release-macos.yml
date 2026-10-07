@@ -3,8 +3,6 @@ name: Build macOS release
 on:
   workflow_dispatch:
   push:
-    branches:
-      - '**'
     tags:
       - 'v*'
 
@@ -86,18 +84,22 @@ jobs:
           PY
             exit "$STATUS"
           fi
-      - name: Package app and checksum
+      - name: Package installer and checksum
         run: |
           APP_PATH="$PWD/build/DerivedData/Build/Products/Release/MacCal.app"
           test -d "$APP_PATH"
-          mkdir -p dist
+          mkdir -p dist build/dmg-staging
           ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" dist/MacCal-macos-universal.zip
-          shasum -a 256 dist/MacCal-macos-universal.zip > dist/SHA256SUMS
+          ditto "$APP_PATH" build/dmg-staging/MacCal.app
+          ln -s /Applications build/dmg-staging/Applications
+          hdiutil create -volname "MacCal" -srcfolder build/dmg-staging -ov -format UDZO dist/MacCal-macos-universal.dmg
+          shasum -a 256 dist/MacCal-macos-universal.dmg dist/MacCal-macos-universal.zip > dist/SHA256SUMS
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MacCal-macos-universal
+          name: MacCal-macos-installer
           path: |
+            dist/MacCal-macos-universal.dmg
             dist/MacCal-macos-universal.zip
             dist/SHA256SUMS
           if-no-files-found: error
@@ -108,11 +110,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" dist/MacCal-macos-universal.zip dist/SHA256SUMS --clobber
+            gh release upload "$GITHUB_REF_NAME" \
+              dist/MacCal-macos-universal.dmg \
+              dist/MacCal-macos-universal.zip \
+              dist/SHA256SUMS \
+              --clobber
           else
             gh release create "$GITHUB_REF_NAME" \
+              dist/MacCal-macos-universal.dmg \
               dist/MacCal-macos-universal.zip \
               dist/SHA256SUMS \
               --title "MacCal $GITHUB_REF_NAME" \
-              --notes "Universal macOS calculator app for Apple Silicon and Intel. The app is unsigned; see the repository README for first-open guidance."
+              --notes "Universal macOS calculator installer for Apple Silicon and Intel. Open the DMG and drag MacCal.app to Applications. The app is unsigned; see the repository README for first-open guidance."
           fi

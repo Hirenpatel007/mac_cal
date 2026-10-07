@@ -28,9 +28,15 @@ For a release-mode local build, run `npm run build:macos`. The Xcode product is 
 
 ## Build and release the downloadable app
 
-The GitHub Actions workflow **Build macOS release** builds a universal `.app` (arm64 + x86_64), packages it as `MacCal-macos-universal.zip`, and uploads it as a workflow artifact. Run it from the repository's **Actions** tab to create an artifact. Pushing a version tag such as `v1.0.0` also creates a GitHub Release and attaches the ZIP and its SHA-256 checksum.
+The GitHub Actions workflow **Build macOS release** builds a universal app (arm64 + x86_64) and packages:
 
-The release build is unsigned because Developer ID signing and notarization require the publisher's Apple credentials. For a locally built or unsigned download, macOS may require you to control-click the app and choose **Open** the first time.
+- `MacCal-macos-universal.dmg` — open it, then drag `MacCal.app` to **Applications**
+- `MacCal-macos-universal.zip` — the app bundle in a ZIP
+- `SHA256SUMS` — checksums for both downloads
+
+Run the workflow from the repository's **Actions** tab to create downloadable artifacts. Pushing a version tag such as `v1.0.0` also publishes those files as a GitHub Release.
+
+The build is unsigned because signing and notarization require the publisher's Apple Developer ID credentials. On first launch, macOS may ask you to control-click `MacCal.app` and choose **Open**. A signed/notarized installer is needed to remove that warning.
 
 ## Checks
 
