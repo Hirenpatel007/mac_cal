@@ -57,7 +57,9 @@ jobs:
           bundle exec pod install --project-directory=macos
       - name: Build Release app for Apple Silicon and Intel
         run: |
-          xcodebuild \
+          LOG="$RUNNER_TEMP/xcodebuild.log"
+          set +e
+          xcodebuild -quiet \
             -workspace macos/MacCal.xcworkspace \
             -scheme MacCal-macOS \
             -configuration Release \
@@ -67,7 +69,23 @@ jobs:
             ARCHS='arm64 x86_64' \
             ONLY_ACTIVE_ARCH=NO \
             CODE_SIGNING_ALLOWED=NO \
-            build
+            build >"$LOG" 2>&1
+          STATUS=$?
+          if [ "$STATUS" -ne 0 ]; then
+            echo '### Xcode build failed' >> "$GITHUB_STEP_SUMMARY"
+            tail -n 100 "$LOG" | tee -a "$GITHUB_STEP_SUMMARY"
+            python3 - "$LOG" <<'PY'
+          import sys
+          from pathlib import Path
+          lines = Path(sys.argv[1]).read_text(errors='replace').splitlines()
+          tokens = ('error:', 'fatal error:', 'undefined symbols', 'build failed')
+          matches = [line for line in lines if any(token in line.lower() for token in tokens)]
+          message = '\n'.join(matches[-12:] or lines[-20:])[-8000:]
+          message = message.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          print(f'::error title=Xcode build failed::{message}')
+          PY
+            exit "$STATUS"
+          fi
       - name: Package app and checksum
         run: |
           APP_PATH="$PWD/build/DerivedData/Build/Products/Release/MacCal.app"
