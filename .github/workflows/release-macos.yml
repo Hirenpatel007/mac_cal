@@ -1,0 +1,100 @@
+name: Build macOS release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - '**'
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  checks:
+    name: Verify calculator
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Test calculator logic
+        run: npm test
+      - name: Check TypeScript
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+
+  build:
+    name: Build universal .app
+    needs: checks
+    runs-on: macos-15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+      - name: Install JavaScript dependencies
+        run: npm ci
+      - name: Install CocoaPods dependencies
+        run: |
+          gem install bundler --no-document
+          bundle install --jobs 4 --retry 3
+          bundle exec pod install --project-directory=macos
+      - name: Build Release app for Apple Silicon and Intel
+        run: |
+          xcodebuild \
+            -workspace macos/MacCal.xcworkspace \
+            -scheme MacCal-macOS \
+            -configuration Release \
+            -sdk macosx \
+            -destination 'platform=macOS' \
+            -derivedDataPath build/DerivedData \
+            ARCHS='arm64 x86_64' \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+      - name: Package app and checksum
+        run: |
+          APP_PATH="$PWD/build/DerivedData/Build/Products/Release/MacCal.app"
+          test -d "$APP_PATH"
+          mkdir -p dist
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" dist/MacCal-macos-universal.zip
+          shasum -a 256 dist/MacCal-macos-universal.zip > dist/SHA256SUMS
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MacCal-macos-universal
+          path: |
+            dist/MacCal-macos-universal.zip
+            dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/MacCal-macos-universal.zip dist/SHA256SUMS --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              dist/MacCal-macos-universal.zip \
+              dist/SHA256SUMS \
+              --title "MacCal $GITHUB_REF_NAME" \
+              --notes "Universal macOS calculator app for Apple Silicon and Intel. The app is unsigned; see the repository README for first-open guidance."
+          fi

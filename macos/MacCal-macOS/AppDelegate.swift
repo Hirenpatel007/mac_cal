@@ -1,0 +1,64 @@
+import SwiftUI
+import React
+import React_RCTAppDelegate
+import ReactAppDependencyProvider
+
+@main
+struct MacCalApp: App {
+  @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+
+  var body: some Scene {
+    Window("MacCal", id: "main") {
+      ReactNativeView(factory: appDelegate.reactNativeFactory)
+        .frame(minWidth: 380, minHeight: 740)
+        .preferredColorScheme(.dark)
+    }
+    .defaultSize(width: 460, height: 800)
+  }
+}
+
+// MARK: - App Delegate
+
+class AppDelegate: NSObject, NSApplicationDelegate {
+  private let reactNativeDelegate: ReactNativeDelegate
+  let reactNativeFactory: RCTReactNativeFactory
+
+  override init() {
+    super.init()
+
+    let delegate = ReactNativeDelegate()
+    let factory = RCTReactNativeFactory(delegate: delegate)
+    delegate.dependencyProvider = RCTAppDependencyProvider()
+
+    reactNativeDelegate = delegate
+    reactNativeFactory = factory
+  }
+}
+
+// MARK: - React Native Delegate
+
+class ReactNativeDelegate: RCTDefaultReactNativeFactoryDelegate {
+  override func sourceURL(for bridge: RCTBridge) -> URL? {
+    bundleURL()
+  }
+
+  override func bundleURL() -> URL? {
+#if DEBUG
+    RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: "index")
+#else
+    Bundle.main.url(forResource: "main", withExtension: "jsbundle")
+#endif
+  }
+}
+
+// MARK: - React Native SwiftUI View
+
+struct ReactNativeView: NSViewRepresentable {
+  let factory: RCTReactNativeFactory
+
+  func makeNSView(context: Context) -> NSView {
+    factory.rootViewFactory.view(withModuleName: "MacCal")
+  }
+
+  func updateNSView(_ nsView: NSView, context: Context) {}
+}
